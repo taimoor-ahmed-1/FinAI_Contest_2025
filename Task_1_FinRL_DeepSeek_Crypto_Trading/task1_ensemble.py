@@ -266,7 +266,7 @@ def run(save_path, agent_list, log_rules=False):
     args.soft_update_tau = 2e-6
     args.learning_rate = 2e-6
     args.batch_size = 512
-    args.break_step = int(32)  # TODO reset to 32e4
+    args.break_step = int(32e4)  # Increased to 320,000 steps for proper training
     args.buffer_size = int(max_step * 32)
     args.repeat_times = 2
     args.horizon_len = int(max_step * 4)
@@ -276,6 +276,7 @@ def run(save_path, agent_list, log_rules=False):
 
     args.eval_env_class = EvalTradeSimulator
     args.eval_env_args = env_args.copy()
+    args.eval_env_args["dataset_path"] = "./data/BTC_1sec_with_sentiment_risk_val.csv"  # Use validation split for evaluation
 
     ensemble_env = Ensemble(
         log_rules,

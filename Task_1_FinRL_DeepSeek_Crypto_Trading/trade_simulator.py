@@ -28,19 +28,21 @@ class TradeSimulator:
         self.sim_ids = th.arange(self.num_sims, device=self.device)
 
         """config"""
-        args = ConfigData()
+        args = ConfigData(split_type="train")  # Use training split instead of original file
 
         """load data"""
         self.factor_ary = np.load(args.predict_ary_path)
         self.factor_ary = th.tensor(self.factor_ary, dtype=th.float32)  # CPU
 
-        data_df = pd.read_csv(args.csv_path)  # CSV READ HERE
+        data_df = pd.read_csv(args.csv_path)  # CSV READ HERE - Now uses training split
 
         self.price_ary = data_df[["bids_distance_3", "asks_distance_3", "midpoint"]].values
         self.price_ary[:, 0] = self.price_ary[:, 2] * (1 + self.price_ary[:, 0])
         self.price_ary[:, 1] = self.price_ary[:, 2] * (1 + self.price_ary[:, 1])
 
         self.llm_signals = data_df[["sentiment_score", "risk_score"]].values
+        # Min-max normalize to [-1, 1]
+        self.llm_signals = 2 * (self.llm_signals - 1) / 4 - 1
         
 
         """Align with the rear of the dataset instead"""

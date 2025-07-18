@@ -81,11 +81,17 @@ def train_model(gpu_id: int):
     out_dir = './output'
     if_report = True
 
-    '''data'''
-    args = ConfigData()
-    seq_data = SeqData(args=args, train_ratio=0.6)
-    input_dim = seq_data.input_dim
-    label_dim = seq_data.label_dim
+    '''data - Use 70/15/15 split'''
+    # Load training data (70% split)
+    train_args = ConfigData(split_type="train")
+    train_seq_data = SeqData(args=train_args, train_ratio=1.0)  # Use all training data
+    
+    # Load validation data (15% split)
+    val_args = ConfigData(split_type="val")
+    val_seq_data = SeqData(args=val_args, train_ratio=1.0)  # Use all validation data
+    
+    input_dim = train_seq_data.input_dim
+    label_dim = train_seq_data.label_dim
 
     '''Model'''
     from seq_net import RnnRegNet
@@ -99,12 +105,14 @@ def train_model(gpu_id: int):
     # validator = Validator(out_dir=out_dir, if_report=if_report)
 
     seq_len = 2 ** 8
-    train_times = int(seq_data.train_seq_len / seq_len / batch_size * epoch)
-    print(f"| train_seq_len {seq_data.train_seq_len}  train_times {train_times}")
+    train_times = int(train_seq_data.train_seq_len / seq_len / batch_size * epoch)
+    print(f"| train_seq_len {train_seq_data.train_seq_len}  train_times {train_times}")
+    print(f"| Using 70/15/15 split: Training on 70% data, validating on 15% data")
+    
     for step_idx in range(train_times):
         th.set_grad_enabled(True)
         net.train()
-        inp, lab = seq_data.sample_for_train(batch_size=batch_size, seq_len=seq_len, device=device)
+        inp, lab = train_seq_data.sample_for_train(batch_size=batch_size, seq_len=seq_len, device=device)
         out, _ = net(inp)
         obj = net.get_obj_value(criterion=criterion, out=out, lab=lab, wup_dim=wup_dim)
         _update_network(optimizer, obj.mean(), clip_grad_norm)
@@ -116,10 +124,10 @@ def train_model(gpu_id: int):
             evaluator.update_obj_train(obj=None)
             # validator.reset_list()
 
-            '''update_obj_valid'''
+            '''update_obj_valid - Use validation split data'''
             net.eval()
-            for _ in range(int(seq_data.valid_seq_len / seq_len / batch_size)):
-                inp, lab = seq_data.sample_for_train(batch_size=batch_size, seq_len=seq_len, device=device)
+            for _ in range(int(val_seq_data.train_seq_len / seq_len / batch_size)):
+                inp, lab = val_seq_data.sample_for_train(batch_size=batch_size, seq_len=seq_len, device=device)
                 out, _ = net(inp)
 
                 seq_len = min(out.shape[0], lab.shape[0])
@@ -144,20 +152,21 @@ def train_model(gpu_id: int):
                 th.save(net.state_dict(), f'{out_dir}/net_{step_idx:06}_{best_valid_loss:06.3f}.pth')
                 # validator.validate_save(f'{out_dir}_result.csv')
 
-    predict_net_path = args.predict_net_path
+    predict_net_path = train_args.predict_net_path
     th.save(net.state_dict(), predict_net_path)
     print(f'| save network in {predict_net_path}')
 
-    predict_ary = np.empty_like(seq_data.valid_label_seq)
+    # Generate predictions on validation data
+    predict_ary = np.empty_like(val_seq_data.train_label_seq)
     hid: Optional[TEN] = None
 
-    print(f"| valid_seq_len {seq_data.valid_seq_len}  valid_times {seq_data.valid_seq_len // seq_len}")
-    for seq_i0 in range(0, seq_data.valid_seq_len, seq_len):
+    print(f"| valid_seq_len {val_seq_data.train_seq_len}  valid_times {val_seq_data.train_seq_len // seq_len}")
+    for seq_i0 in range(0, val_seq_data.train_seq_len, seq_len):
         seq_i1 = seq_i0 + seq_len
-        inp = seq_data.valid_input_seq[seq_i0:seq_i1].to(device)
+        inp = val_seq_data.train_input_seq[seq_i0:seq_i1].to(device)
         out, hid = net.forward(inp[:, None, :], hid)
         predict_ary[seq_i0:seq_i1] = out.data.cpu().numpy().squeeze(1)
-    predict_ary_path = args.predict_ary_path
+    predict_ary_path = val_args.predict_ary_path
     np.save(predict_ary_path, predict_ary)
     print(f'| save predict in {predict_ary_path}')
 
@@ -171,28 +180,29 @@ def valid_model(gpu_id: int):
     mid_dim = 128  # Dimensions of hidden layers in recurrent networks
     num_layers = 4  # The number of layers in the recurrent network. The larger the value, the more content the recurrent network can remember.
 
-    '''data'''
-    args = ConfigData()
-    seq_data = SeqData(args=args, train_ratio=0.0)
-    input_dim = seq_data.input_dim
-    label_dim = seq_data.label_dim
+    '''data - Use test split (15%)'''
+    test_args = ConfigData(split_type="test")
+    test_seq_data = SeqData(args=test_args, train_ratio=1.0)  # Use all test data
+    input_dim = test_seq_data.input_dim
+    label_dim = test_seq_data.label_dim
 
-    predict_net_path = args.predict_net_path
-    predict_ary_path = args.predict_ary_path
+    predict_net_path = test_args.predict_net_path
+    predict_ary_path = test_args.predict_ary_path
 
     '''Model'''
     from seq_net import RnnRegNet
     net = RnnRegNet(inp_dim=input_dim, mid_dim=mid_dim, out_dim=label_dim, num_layers=num_layers).to(device)
     net.load_state_dict(th.load(predict_net_path, map_location=lambda storage, loc: storage))
 
-    predict_ary = np.empty_like(seq_data.valid_label_seq)
+    predict_ary = np.empty_like(test_seq_data.train_label_seq)
     hid: Optional[TEN] = None
 
     seq_len = 2 ** 9
-    print(f"| valid_seq_len {seq_data.valid_seq_len}  valid_times {seq_data.valid_seq_len // seq_len}")
-    for seq_i0 in range(0, seq_data.valid_seq_len, seq_len):
+    print(f"| test_seq_len {test_seq_data.train_seq_len}  test_times {test_seq_data.train_seq_len // seq_len}")
+    print(f"| Using test split (15% data) for final evaluation")
+    for seq_i0 in range(0, test_seq_data.train_seq_len, seq_len):
         seq_i1 = seq_i0 + seq_len
-        inp = seq_data.valid_input_seq[seq_i0:seq_i1].to(device)
+        inp = test_seq_data.train_input_seq[seq_i0:seq_i1].to(device)
         out, hid = net.forward(inp[:, None, :], hid)
         predict_ary[seq_i0:seq_i1] = out.data.cpu().numpy().squeeze(1)
     np.save(predict_ary_path, predict_ary)
@@ -207,6 +217,7 @@ Out[3]: (1030728, 3)
 
 if __name__ == '__main__':
     GPU_ID = int(sys.argv[1]) if len(sys.argv) > 1 else -1  # Get GPU_ID from command line parameters
-    convert_btc_csv_to_btc_npy()  # Data preprocessing, using market information and code to generate weak factor Alpha101
-    train_model(gpu_id=GPU_ID)  # Using weak factor Alpha101 to train recurrent network RNN ​​(LSTM+GRU + Regression)
+    print("| Using 70/15/15 data split for RNN feature learning")
+    print("| Training on 70% data, validating on 15% data, testing on 15% data")
+    train_model(gpu_id=GPU_ID)  # Using weak factor Alpha101 to train recurrent network RNN (LSTM+GRU + Regression)
     valid_model(gpu_id=GPU_ID)  # Generate prediction results using the trained recurrent network and save them to the directory specified by ConfigData

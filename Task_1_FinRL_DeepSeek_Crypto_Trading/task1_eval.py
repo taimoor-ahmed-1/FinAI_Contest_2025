@@ -168,7 +168,7 @@ def run_evaluation(save_path, agent_list):
         "slippage": slippage,
         "num_sims": num_sims,
         "step_gap": step_gap,
-        "dataset_path": "./data/BTC_1sec_with_sentiment_risk_test.csv",  # Replace with your evaluation dataset path
+        "dataset_path": "./data/BTC_1sec_with_sentiment_risk_val.csv",  # Use validation split
     }
     args = Config(agent_class=None, env_class=EvalTradeSimulator, env_args=env_args)
     args.gpu_id = gpu_id
@@ -186,6 +186,6 @@ def run_evaluation(save_path, agent_list):
 
 
 if __name__ == "__main__":
-    save_path = "trained_agents"
+    save_path = "ensemble_teamname/ensemble_models"
     agent_list = [AgentD3QN, AgentDoubleDQN, AgentTwinD3QN]
     run_evaluation(save_path, agent_list)
