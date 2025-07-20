@@ -180,8 +180,8 @@ def valid_model(gpu_id: int):
     mid_dim = 128  # Dimensions of hidden layers in recurrent networks
     num_layers = 4  # The number of layers in the recurrent network. The larger the value, the more content the recurrent network can remember.
 
-    '''data - Use test split (15%)'''
-    test_args = ConfigData(split_type="test")
+    '''data - Use validation split (15%)'''
+    test_args = ConfigData(split_type="val")
     test_seq_data = SeqData(args=test_args, train_ratio=1.0)  # Use all test data
     input_dim = test_seq_data.input_dim
     label_dim = test_seq_data.label_dim
